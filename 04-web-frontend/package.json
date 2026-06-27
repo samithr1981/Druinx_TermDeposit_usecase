@@ -1,0 +1,18 @@
+{
+  "name": "drunix-multiorg-frontend",
+  "version": "1.0.0",
+  "description": "Web front end that drives the Drunix two-org network via the Fabric Gateway SDK",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/app.js"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.0",
+    "@hyperledger/fabric-gateway": "^1.10.0",
+    "express": "^4.19.2"
+  }
+}

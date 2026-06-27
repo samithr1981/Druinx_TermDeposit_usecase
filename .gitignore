@@ -1,0 +1,14 @@
+# Go
+*.exe
+*.test
+*.out
+vendor/
+go.sum
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drunix — Two-Org Network Walkthrough</title>
+<style>
+  /* ---- Design tokens ----
+     Subject: a consortium ledger shared by two banks. Vernacular: ledger
+     columns, endorsement stamps, paired records. Palette built from "two
+     parties + a neutral clearing layer": deep ink, two org accents (indigo
+     for Org1, copper for Org2), parchment field. Display face is a
+     mono-influenced grotesk to echo terminal/ledger output; body is a
+     humanist sans. Signature element: the twin-ledger panel where both
+     org states light up in lockstep when a transaction commits. */
+  :root{
+    --ink:#15171c;
+    --field:#f3efe6;
+    --field-2:#e9e3d4;
+    --line:#cdc6b4;
+    --org1:#3b3a8f;       /* indigo */
+    --org1-soft:#e4e3f4;
+    --org2:#a8632a;       /* copper */
+    --org2-soft:#f3e4d6;
+    --order:#2c6e5b;      /* clearing/orderer green */
+    --order-soft:#dcebe5;
+    --muted:#6b6557;
+    --reject:#9d2b2b;
+    --mono:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --sans:"Inter","Helvetica Neue",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;background:var(--field);color:var(--ink);
+    font-family:var(--sans);line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
+
+  .wrap{max-width:1060px;margin:0 auto;padding:40px 24px 80px;}
+
+  /* ---- Hero ---- */
+  header.hero{border-bottom:2px solid var(--ink);padding-bottom:28px;margin-bottom:36px;}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 14px;}
+  h1{font-family:var(--mono);font-weight:500;font-size:clamp(30px,5vw,52px);line-height:1.04;margin:0 0 16px;letter-spacing:-.01em;}
+  h1 .a1{color:var(--org1);}
+  h1 .a2{color:var(--org2);}
+  .lede{font-size:18px;max-width:64ch;color:#34322c;margin:0;}
+
+  /* ---- Topology strip ---- */
+  .topo{display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:stretch;margin:36px 0 8px;}
+  @media(max-width:720px){.topo{grid-template-columns:1fr;}}
+  .org{border:1.5px solid var(--line);background:var(--field-2);border-radius:4px;padding:18px;position:relative;transition:box-shadow .25s,border-color .25s,transform .25s;}
+  .org h3{font-family:var(--mono);font-size:14px;margin:0 0 4px;letter-spacing:.04em;}
+  .org.o1{border-top:4px solid var(--org1);}
+  .org.o2{border-top:4px solid var(--org2);}
+  .org .roles{list-style:none;padding:0;margin:12px 0 0;font-family:var(--mono);font-size:12.5px;color:#3a382f;}
+  .org .roles li{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted var(--line);}
+  .org .roles li:last-child{border-bottom:none;}
+  .role-tag{color:var(--muted);}
+  .orderer{align-self:center;text-align:center;border:1.5px dashed var(--order);background:var(--order-soft);border-radius:4px;padding:14px 12px;font-family:var(--mono);font-size:12.5px;color:#1f4e40;min-width:120px;}
+  .orderer strong{display:block;font-size:13px;margin-bottom:4px;color:var(--order);}
+
+  .org.lit-1{border-color:var(--org1);box-shadow:0 0 0 3px var(--org1-soft);transform:translateY(-2px);}
+  .org.lit-2{border-color:var(--org2);box-shadow:0 0 0 3px var(--org2-soft);transform:translateY(-2px);}
+  .orderer.lit{box-shadow:0 0 0 3px var(--order-soft);}
+
+  .stamp{position:absolute;top:12px;right:12px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;border:1px solid currentColor;border-radius:2px;padding:2px 6px;opacity:0;transition:opacity .2s;}
+  .o1 .stamp{color:var(--org1);}
+  .o2 .stamp{color:var(--org2);}
+  .stamp.show{opacity:1;}
+
+  /* ---- Stepper ---- */
+  .stage{margin:44px 0 24px;}
+  .stage-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px;}
+  .stage-num{font-family:var(--mono);font-size:13px;color:var(--muted);border:1px solid var(--line);border-radius:50%;width:30px;height:30px;display:grid;place-items:center;flex:none;}
+  .stage-title{font-size:21px;font-weight:700;margin:0;letter-spacing:-.01em;}
+  .stage-body{margin-left:44px;}
+  .stage-body p{margin:6px 0 14px;max-width:70ch;color:#34322c;}
+
+  /* ---- Twin ledger (signature element) ---- */
+  .ledgers{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0 4px;}
+  @media(max-width:600px){.ledgers{grid-template-columns:1fr;}}
+  .ledger{border:1.5px solid var(--line);border-radius:4px;background:#fbf9f3;overflow:hidden;}
+  .ledger header{font-family:var(--mono);font-size:12px;padding:8px 12px;color:#fff;letter-spacing:.05em;}
+  .ledger.l1 header{background:var(--org1);}
+  .ledger.l2 header{background:var(--org2);}
+  .ledger pre{margin:0;padding:14px 14px;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:#2a281f;white-space:pre-wrap;min-height:120px;transition:background .3s;}
+  .ledger.flash pre{background:#fff3d6;}
+  .empty{color:var(--muted);font-style:italic;}
+
+  /* ---- Controls ---- */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:36px 0 0;padding-top:24px;border-top:1px solid var(--line);}
+  button{font-family:var(--mono);font-size:13px;letter-spacing:.03em;cursor:pointer;border:1.5px solid var(--ink);background:var(--ink);color:var(--field);padding:11px 18px;border-radius:3px;transition:background .15s,color .15s,opacity .15s;}
+  button.ghost{background:transparent;color:var(--ink);}
+  button:hover:not(:disabled){opacity:.82;}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  button:focus-visible{outline:3px solid var(--org1);outline-offset:2px;}
+  .step-label{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-left:auto;}
+
+  /* ---- Console ---- */
+  .console{margin-top:22px;background:var(--ink);color:#e8e4d8;border-radius:4px;padding:16px 18px;font-family:var(--mono);font-size:12.5px;line-height:1.7;min-height:96px;}
+  .console .line{opacity:0;animation:fade .3s forwards;}
+  .console .ok{color:#8fd3b0;}
+  .console .org1c{color:#a9a8e8;}
+  .console .org2c{color:#e0a878;}
+  .console .warn{color:#e8b84b;}
+  .console .err{color:#e88;}
+  .console .dim{color:#8b8678;}
+  @keyframes fade{to{opacity:1;}}
+
+  .policy-note{margin-top:30px;font-family:var(--mono);font-size:12.5px;color:var(--muted);border-left:3px solid var(--order);padding:10px 0 10px 14px;background:var(--order-soft);border-radius:0 3px 3px 0;}
+  .policy-note b{color:var(--order);}
+
+  footer{margin-top:54px;padding-top:20px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">Drunix · enterprise blockchain · NPCI</p>
+    <h1>One ledger, two owners.<br><span class="a1">Org1</span> and <span class="a2">Org2</span> must both agree.</h1>
+    <p class="lede">A genuine multi-organisation network: two banks each run their own Drunix peers and keep their own copy of the ledger. No state change commits unless <em>both</em> orgs endorse it. Step through a create-and-transfer below and watch the two ledgers stay in lockstep.</p>
+  </header>
+
+  <!-- Topology -->
+  <div class="topo" aria-label="network topology">
+    <div class="org o1" id="org1">
+      <div class="stamp" id="stamp1">ENDORSED ✓</div>
+      <h3>Org1MSP</h3>
+      <div class="role-tag" style="font-family:var(--mono);font-size:11px;color:var(--muted)">first bank</div>
+      <ul class="roles">
+        <li><span>Lite Peer</span><span class="role-tag">:7051</span></li>
+        <li><span>VSSC</span><span class="role-tag">:7071</span></li>
+        <li><span>Committing Peer</span><span class="role-tag">:7061</span></li>
+        <li><span>YugabyteDB</span><span class="role-tag">:5433</span></li>
+      </ul>
+    </div>
+
+    <div class="orderer" id="orderer">
+      <strong>Orderer</strong>
+      etcdraft<br>:7050<br>
+      <span style="color:var(--muted)">shared</span>
+    </div>
+
+    <div class="org o2" id="org2">
+      <div class="stamp" id="stamp2">ENDORSED ✓</div>
+      <h3>Org2MSP</h3>
+      <div class="role-tag" style="font-family:var(--mono);font-size:11px;color:var(--muted)">second bank</div>
+      <ul class="roles">
+        <li><span>Lite Peer</span><span class="role-tag">:9051</span></li>
+        <li><span>VSSC</span><span class="role-tag">:7071</span></li>
+        <li><span>Committing Peer</span><span class="role-tag">:7061</span></li>
+        <li><span>YugabyteDB</span><span class="role-tag">:5433</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="policy-note">Endorsement policy: <b>AND('Org1MSP.peer', 'Org2MSP.peer')</b> — every transaction needs a signature from each org before the orderer cuts a block.</p>
+
+  <!-- Twin ledgers -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num" id="liveStepNum">·</span>
+      <h2 class="stage-title" id="liveStepTitle">Shared ledger state</h2>
+    </div>
+    <div class="stage-body">
+      <p id="liveStepDesc">Both organisations start with an empty ledger. Run the demo to create an asset on Org1 and transfer it to Org2 — each org's copy updates only after joint endorsement.</p>
+      <div class="ledgers">
+        <div class="ledger l1" id="ledger1">
+          <header>Org1MSP — ledger copy</header>
+          <pre id="ledger1Body"><span class="empty">— empty —</span></pre>
+        </div>
+        <div class="ledger l2" id="ledger2">
+          <header>Org2MSP — ledger copy</header>
+          <pre id="ledger2Body"><span class="empty">— empty —</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Console -->
+  <div class="console" id="console" aria-live="polite">
+    <div class="line dim">drunix@test-network · ready. Press “Run next step”.</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button id="nextBtn">Run next step ▸</button>
+    <button id="failBtn" class="ghost">Try with one endorser ✕</button>
+    <button id="resetBtn" class="ghost">Reset</button>
+    <span class="step-label" id="stepLabel">step 0 / 4</span>
+  </div>
+
+  <footer>
+    Mirrors the Drunix test-network in <span style="color:#3a382f">drunix-network/test-network</span>. Roles, ports and the LP/VSSC/CP split are read from the repo's compose file. This is an illustrative walkthrough — the real flow runs in containers via <span style="color:#3a382f">network.sh</span>.
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  const steps = [
+    {
+      num:"1", title:"Org1 proposes: CreateAsset(trade-001, 500)",
+      desc:"Org1's client sends the proposal to both Lite Peers. Each runs the chaincode against its own ledger and signs the result — but nothing is written yet.",
+      lit:["org1","org2"], stamps:true, order:false,
+      ledger1:null, ledger2:null,
+      console:[
+        ["org1c","Org1 LP (:7051)  → simulate CreateAsset … endorse ✓"],
+        ["org2c","Org2 LP (:9051)  → simulate CreateAsset … endorse ✓"],
+        ["dim","2 / 2 endorsements collected — policy AND satisfied"]
+      ]
+    },
+    {
+      num:"2", title:"Orderer cuts a block; both CPs commit",
+      desc:"With both signatures present, the orderer orders the transaction into a block and delivers it. Each org's Committing Peer validates and writes to its own YugabyteDB. The two ledgers now match.",
+      lit:[], stamps:false, order:true,
+      ledger1:{ID:"trade-001",Value:500,CreatedByOrg:"Org1MSP",OwnerOrg:"Org1MSP"},
+      ledger2:{ID:"trade-001",Value:500,CreatedByOrg:"Org1MSP",OwnerOrg:"Org1MSP"},
+      flash:true,
+      console:[
+        ["dim","Orderer (:7050) → block #2 cut, delivered to both orgs"],
+        ["org1c","Org1 CP (:7061) → commit → YugabyteDB org1 ✓"],
+        ["org2c","Org2 CP (:7061) → commit → YugabyteDB org2 ✓"],
+        ["ok","state replicated — OwnerOrg = Org1MSP on both copies"]
+      ]
+    },
+    {
+      num:"3", title:"Org1 proposes: TransferAsset(trade-001 → Org2MSP)",
+      desc:"The current owner (Org1) hands the asset across the org boundary. Again both LPs endorse — Org2 independently validates that Org1 really is the owner before signing.",
+      lit:["org1","org2"], stamps:true, order:false,
+      ledger1:{ID:"trade-001",Value:500,CreatedByOrg:"Org1MSP",OwnerOrg:"Org1MSP"},
+      ledger2:{ID:"trade-001",Value:500,CreatedByOrg:"Org1MSP",OwnerOrg:"Org1MSP"},
+      console:[
+        ["org1c","Org1 LP (:7051)  → simulate Transfer … owner check ok … endorse ✓"],
+        ["org2c","Org2 LP (:9051)  → simulate Transfer … owner check ok … endorse ✓"],
+        ["dim","2 / 2 endorsements collected"]
+      ]
+    },
+    {
+      num:"4", title:"Committed — ownership crosses to Org2",
+      desc:"Block committed on both peers. Querying the same key from either org now returns OwnerOrg = Org2MSP. The asset moved between organisations, and both independently hold the identical new state.",
+      lit:[], stamps:false, order:true,
+      ledger1:{ID:"trade-001",Value:500,CreatedByOrg:"Org1MSP",OwnerOrg:"Org2MSP"},
+      ledger2:{ID:"trade-001",Value:500,CreatedByOrg:"Org1MSP",OwnerOrg:"Org2MSP"},
+      flash:true,
+      console:[
+        ["dim","Orderer (:7050) → block #3 cut, delivered"],
+        ["org1c","Org1 CP → commit ✓   query → OwnerOrg: Org2MSP"],
+        ["org2c","Org2 CP → commit ✓   query → OwnerOrg: Org2MSP"],
+        ["ok","ownership transferred Org1MSP → Org2MSP, ledgers identical"]
+      ]
+    }
+  ];
+
+  let i = 0;
+  const el = id => document.getElementById(id);
+  const consoleEl = el("console");
+
+  function fmt(obj){
+    if(!obj) return '<span class="empty">— empty —</span>';
+    return JSON.stringify(obj,null,1)
+      .replace(/"OwnerOrg": "(Org\dMSP)"/,'"OwnerOrg": <b>"$1"</b>');
+  }
+  function setLedger(side, data, flash){
+    const body = el(side===1?"ledger1Body":"ledger2Body");
+    const card = el(side===1?"ledger1":"ledger2");
+    body.innerHTML = fmt(data);
+    if(flash){ card.classList.add("flash"); setTimeout(()=>card.classList.remove("flash"),600); }
+  }
+  function clearLit(){
+    el("org1").classList.remove("lit-1"); el("org2").classList.remove("lit-2");
+    el("orderer").classList.remove("lit");
+    el("stamp1").classList.remove("show"); el("stamp2").classList.remove("show");
+  }
+  function pushConsole(lines, replace){
+    if(replace) consoleEl.innerHTML="";
+    lines.forEach((l,idx)=>{
+      const d=document.createElement("div");
+      d.className="line "+l[0];
+      d.style.animationDelay=(idx*0.12)+"s";
+      d.textContent=l[1];
+      consoleEl.appendChild(d);
+    });
+    consoleEl.scrollTop=consoleEl.scrollHeight;
+  }
+
+  function render(step){
+    clearLit();
+    if(step.lit.includes("org1")) el("org1").classList.add("lit-1");
+    if(step.lit.includes("org2")) el("org2").classList.add("lit-2");
+    if(step.order) el("orderer").classList.add("lit");
+    if(step.stamps){ el("stamp1").classList.add("show"); el("stamp2").classList.add("show"); }
+
+    el("liveStepNum").textContent=step.num;
+    el("liveStepTitle").textContent=step.title;
+    el("liveStepDesc").textContent=step.desc;
+
+    if(step.ledger1!==undefined) setLedger(1, step.ledger1, step.flash);
+    if(step.ledger2!==undefined) setLedger(2, step.ledger2, step.flash);
+
+    pushConsole(step.console, true);
+  }
+
+  el("nextBtn").addEventListener("click", ()=>{
+    if(i>=steps.length) return;
+    render(steps[i]);
+    i++;
+    el("stepLabel").textContent="step "+i+" / "+steps.length;
+    if(i>=steps.length){ el("nextBtn").disabled=true; el("nextBtn").textContent="Complete ✓"; }
+    el("failBtn").disabled = (i>0); // the fail demo makes sense from a clean state
+  });
+
+  el("failBtn").addEventListener("click", ()=>{
+    clearLit();
+    el("org1").classList.add("lit-1");
+    el("liveStepNum").textContent="✕";
+    el("liveStepTitle").textContent="One endorser only — rejected";
+    el("liveStepDesc").textContent="If the proposal is sent to just Org1's peer, only one signature is collected. The AND policy needs both, so the transaction is refused and nothing is written. This is the proof that Org2's approval is genuinely required.";
+    pushConsole([
+      ["org1c","Org1 LP (:7051) → simulate CreateAsset … endorse ✓"],
+      ["warn","1 / 2 endorsements — policy AND('Org1MSP.peer','Org2MSP.peer') NOT satisfied"],
+      ["err","ENDORSEMENT_POLICY_FAILURE — transaction rejected, ledger unchanged"]
+    ], true);
+  });
+
+  el("resetBtn").addEventListener("click", ()=>{
+    i=0; clearLit();
+    el("nextBtn").disabled=false; el("nextBtn").textContent="Run next step ▸";
+    el("failBtn").disabled=false;
+    el("stepLabel").textContent="step 0 / "+steps.length;
+    el("liveStepNum").textContent="·";
+    el("liveStepTitle").textContent="Shared ledger state";
+    el("liveStepDesc").textContent="Both organisations start with an empty ledger. Run the demo to create an asset on Org1 and transfer it to Org2 — each org's copy updates only after joint endorsement.";
+    setLedger(1,null,false); setLedger(2,null,false);
+    pushConsole([["dim","drunix@test-network · reset. Press “Run next step”."]], true);
+  });
+})();
+</script>
+</body>
+</html>

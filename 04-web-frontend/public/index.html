@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drunix — Two-Org Ledger Console</title>
+<style>
+  /* ---- Tokens ----
+     Subject: a consortium ledger jointly held by two banks. The page's one job
+     is to make "both orgs independently hold identical state" visible.
+     Palette: deep ink field, indigo = Org1, copper = Org2, a neutral steel
+     clearing-layer between them, parchment for ledger rows.
+     Type: Space Grotesk (display, mono-influenced grotesk echoing ledger/terminal
+     output) + Inter (body). Signature: twin ledger panels that pulse in lockstep
+     on commit. */
+  :root {
+    --ink: #14161c;
+    --ink-2: #1b1e26;
+    --panel: #20242e;
+    --line: #2e333f;
+    --org1: #6c7bff;      /* indigo */
+    --org1-dim: #3a4080;
+    --org2: #d98a4e;      /* copper */
+    --org2-dim: #7d5230;
+    --steel: #8b93a7;     /* neutral clearing layer */
+    --parchment: #e9e6dd;
+    --text: #e7e9ef;
+    --text-dim: #969cad;
+    --ok: #5fd0a0;
+    --err: #e8736b;
+    --radius: 4px;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 28px; }
+  .eyebrow {
+    font-family: 'Space Grotesk', monospace;
+    font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--steel); margin: 0 0 8px;
+  }
+  h1 {
+    font-family: 'Space Grotesk', monospace;
+    font-weight: 700; font-size: clamp(26px, 4vw, 38px);
+    margin: 0; letter-spacing: -0.01em;
+  }
+  .sub { color: var(--text-dim); margin: 8px 0 0; max-width: 60ch; font-size: 15px; }
+
+  /* control bar */
+  .controls {
+    display: grid; gap: 16px;
+    grid-template-columns: 1fr 1fr;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 720px) { .controls { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--ink-2); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px;
+  }
+  .card h2 {
+    font-family: 'Space Grotesk', monospace;
+    font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-dim); margin: 0 0 14px; font-weight: 500;
+  }
+  label { display: block; font-size: 12px; color: var(--text-dim); margin: 0 0 4px; }
+  .row { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 90px; }
+  input, select {
+    width: 100%; background: var(--panel); border: 1px solid var(--line);
+    color: var(--text); padding: 9px 11px; border-radius: var(--radius);
+    font-family: 'Space Grotesk', monospace; font-size: 14px;
+  }
+  input:focus, select:focus { outline: 2px solid var(--org1); outline-offset: 1px; }
+
+  button {
+    font-family: 'Space Grotesk', monospace; font-weight: 500;
+    background: var(--org1); color: #0d1020; border: none;
+    padding: 10px 16px; border-radius: var(--radius); cursor: pointer;
+    font-size: 14px; letter-spacing: 0.02em;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: translateY(1px); }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* twin ledger — the signature element */
+  .twin {
+    display: grid; gap: 18px;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: start;
+  }
+  @media (max-width: 720px) {
+    .twin { grid-template-columns: 1fr; }
+    .clearing { display: none; }
+  }
+  .ledger {
+    background: var(--ink-2); border: 1px solid var(--line);
+    border-top: 3px solid var(--org); border-radius: var(--radius);
+    padding: 18px; transition: box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .ledger.org1 { --org: var(--org1); --org-dim: var(--org1-dim); }
+  .ledger.org2 { --org: var(--org2); --org-dim: var(--org2-dim); }
+  .ledger.pulse {
+    box-shadow: 0 0 0 1px var(--org), 0 0 28px -6px var(--org);
+    border-top-color: var(--org);
+  }
+  .ledger-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  .ledger-head .org-name {
+    font-family: 'Space Grotesk', monospace; font-weight: 700; font-size: 16px; color: var(--org);
+  }
+  .ledger-head .peer { font-family: 'Space Grotesk', monospace; font-size: 11px; color: var(--text-dim); }
+
+  .rows { display: flex; flex-direction: column; gap: 8px; min-height: 60px; }
+  .asset-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--owner, var(--steel));
+    padding: 9px 11px; border-radius: var(--radius);
+    font-family: 'Space Grotesk', monospace; font-size: 13px;
+  }
+  .asset-row .id { font-weight: 500; }
+  .asset-row .val { color: var(--text-dim); }
+  .asset-row .owner {
+    grid-column: 1 / -1; font-size: 11px; color: var(--text-dim);
+    display: flex; gap: 12px; margin-top: 2px;
+  }
+  .owner-tag { color: var(--owner-color, var(--steel)); font-weight: 500; }
+  .empty { color: var(--text-dim); font-size: 13px; font-style: italic; padding: 8px 0; }
+
+  /* clearing layer between the two ledgers */
+  .clearing {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding-top: 40px; color: var(--steel);
+  }
+  .clearing .bar { width: 1px; flex: 1; background: var(--line); min-height: 40px; }
+  .clearing .label {
+    writing-mode: vertical-rl; font-family: 'Space Grotesk', monospace;
+    font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+  }
+  .clearing.synced .bar { background: var(--ok); }
+  .clearing.synced .label { color: var(--ok); }
+
+  .sync-line {
+    text-align: center; font-family: 'Space Grotesk', monospace;
+    font-size: 12px; margin: 16px 0 0; color: var(--text-dim);
+  }
+  .sync-line.match { color: var(--ok); }
+  .sync-line.mismatch { color: var(--err); }
+
+  /* log */
+  .log {
+    margin-top: 28px; background: #0e1015; border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px 16px;
+    font-family: 'Space Grotesk', monospace; font-size: 12.5px;
+    max-height: 220px; overflow-y: auto;
+  }
+  .log .line { padding: 2px 0; color: var(--text-dim); }
+  .log .line.ok { color: var(--ok); }
+  .log .line.err { color: var(--err); }
+  .log .ts { color: #5a6072; margin-right: 8px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ledger, .ledger.pulse { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Drunix · Consortium ledger console</p>
+    <h1>Two banks, one ledger, both stamps required</h1>
+    <p class="sub">Every write needs an endorsement from <strong>both</strong> organisations.
+      Submit from either side and watch both ledger copies update independently — same
+      state, separately held. That match is the proof.</p>
+  </header>
+
+  <div class="controls">
+    <div class="card">
+      <h2>Create asset</h2>
+      <div class="row">
+        <div><label>Asset ID</label><input id="c-id" value="trade-001"></div>
+        <div><label>Value</label><input id="c-val" value="500"></div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Submit as</label>
+          <select id="c-org"><option value="Org1MSP">Org1 (Bank A)</option><option value="Org2MSP">Org2 (Bank B)</option></select>
+        </div>
+      </div>
+      <button onclick="createAsset()">Create asset</button>
+    </div>
+
+    <div class="card">
+      <h2>Transfer ownership</h2>
+      <div class="row">
+        <div><label>Asset ID</label><input id="t-id" value="trade-001"></div>
+        <div>
+          <label>New owner</label>
+          <select id="t-new"><option value="Org2MSP">Org2 (Bank B)</option><option value="Org1MSP">Org1 (Bank A)</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Submit as (current owner)</label>
+          <select id="t-org"><option value="Org1MSP">Org1 (Bank A)</option><option value="Org2MSP">Org2 (Bank B)</option></select>
+        </div>
+      </div>
+      <button onclick="transferAsset()">Transfer asset</button>
+    </div>
+  </div>
+
+  <div style="margin-bottom:16px; display:flex; gap:10px; flex-wrap:wrap;">
+    <button class="ghost" onclick="refreshBoth()">Refresh both ledgers</button>
+  </div>
+
+  <div class="twin">
+    <div class="ledger org1" id="ledger-org1">
+      <div class="ledger-head">
+        <span class="org-name">Org1 · Bank A</span>
+        <span class="peer">lp1.org1:7051</span>
+      </div>
+      <div class="rows" id="rows-org1"><div class="empty">No assets read yet.</div></div>
+    </div>
+
+    <div class="clearing" id="clearing">
+      <div class="bar"></div>
+      <span class="label">Clearing</span>
+      <div class="bar"></div>
+    </div>
+
+    <div class="ledger org2" id="ledger-org2">
+      <div class="ledger-head">
+        <span class="org-name">Org2 · Bank B</span>
+        <span class="peer">lp1.org2:9051</span>
+      </div>
+      <div class="rows" id="rows-org2"><div class="empty">No assets read yet.</div></div>
+    </div>
+  </div>
+
+  <p class="sync-line" id="sync-line">Refresh to compare both ledger copies.</p>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const ORG_COLORS = { Org1MSP: 'var(--org1)', Org2MSP: 'var(--org2)' };
+
+function logLine(msg, kind) {
+  const log = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString();
+  const div = document.createElement('div');
+  div.className = 'line' + (kind ? ' ' + kind : '');
+  div.innerHTML = `<span class="ts">${ts}</span>${msg}`;
+  log.prepend(div);
+}
+
+async function api(method, url, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+function pulse(orgMsp) {
+  const el = document.getElementById(orgMsp === 'Org1MSP' ? 'ledger-org1' : 'ledger-org2');
+  el.classList.add('pulse');
+  setTimeout(() => el.classList.remove('pulse'), 700);
+}
+
+function renderRows(containerId, assets) {
+  const el = document.getElementById(containerId);
+  if (!assets || assets.length === 0) {
+    el.innerHTML = '<div class="empty">Ledger empty.</div>';
+    return;
+  }
+  el.innerHTML = '';
+  for (const a of assets) {
+    const ownerColor = ORG_COLORS[a.OwnerOrg] || 'var(--steel)';
+    const row = document.createElement('div');
+    row.className = 'asset-row';
+    row.style.setProperty('--owner', ownerColor);
+    row.innerHTML = `
+      <span class="id">${a.ID}</span>
+      <span class="val">value ${a.Value}</span>
+      <span class="owner">
+        <span>owner <span class="owner-tag" style="--owner-color:${ownerColor}">${a.OwnerOrg}</span></span>
+        <span>created by ${a.CreatedByOrg}</span>
+      </span>`;
+    el.appendChild(row);
+  }
+}
+
+async function readFrom(orgMsp) {
+  const data = await api('GET', `/api/assets?org=${orgMsp}`);
+  return data.assets || [];
+}
+
+async function refreshBoth() {
+  const sync = document.getElementById('sync-line');
+  const clearing = document.getElementById('clearing');
+  try {
+    const [a1, a2] = await Promise.all([readFrom('Org1MSP'), readFrom('Org2MSP')]);
+    renderRows('rows-org1', a1);
+    renderRows('rows-org2', a2);
+    const same = JSON.stringify(a1) === JSON.stringify(a2);
+    if (same && a1.length > 0) {
+      sync.textContent = '✓ Both ledger copies hold identical state — independently verified.';
+      sync.className = 'sync-line match';
+      clearing.classList.add('synced');
+    } else if (a1.length === 0 && a2.length === 0) {
+      sync.textContent = 'Both ledgers empty.';
+      sync.className = 'sync-line';
+      clearing.classList.remove('synced');
+    } else {
+      sync.textContent = '✗ Ledger copies differ — a commit may still be propagating.';
+      sync.className = 'sync-line mismatch';
+      clearing.classList.remove('synced');
+    }
+    logLine('Read both ledgers', 'ok');
+  } catch (err) {
+    sync.textContent = 'Could not read ledgers: ' + err.message;
+    sync.className = 'sync-line mismatch';
+    logLine('Read failed: ' + err.message, 'err');
+  }
+}
+
+async function createAsset() {
+  const id = document.getElementById('c-id').value.trim();
+  const value = document.getElementById('c-val').value.trim();
+  const org = document.getElementById('c-org').value;
+  try {
+    logLine(`Submitting CreateAsset(${id}, ${value}) as ${org}…`);
+    await api('POST', '/api/create', { id, value, org });
+    logLine(`Asset ${id} created — endorsed by both orgs, committed`, 'ok');
+    pulse('Org1MSP'); pulse('Org2MSP');
+    await refreshBoth();
+  } catch (err) {
+    logLine('Create failed: ' + err.message, 'err');
+  }
+}
+
+async function transferAsset() {
+  const id = document.getElementById('t-id').value.trim();
+  const newOwnerOrg = document.getElementById('t-new').value;
+  const org = document.getElementById('t-org').value;
+  try {
+    logLine(`Submitting TransferAsset(${id} → ${newOwnerOrg}) as ${org}…`);
+    await api('POST', '/api/transfer', { id, newOwnerOrg, org });
+    logLine(`Asset ${id} transferred to ${newOwnerOrg}`, 'ok');
+    pulse('Org1MSP'); pulse('Org2MSP');
+    await refreshBoth();
+  } catch (err) {
+    logLine('Transfer failed: ' + err.message, 'err');
+  }
+}
+
+// initial read
+refreshBoth();
+</script>
+</body>
+</html>
