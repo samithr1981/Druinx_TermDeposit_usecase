@@ -3,7 +3,6 @@
 *.test
 *.out
 vendor/
-go.sum
 
 # macOS
 .DS_Store

@@ -63,6 +63,7 @@ type FDToken struct {
 
 // FDRecord is the off-token KYC / audit data (the "DataLayer" equivalent).
 type FDRecord struct {
+	DepositorDID  string            `json:"DepositorDID"`
 	DepositorName string            `json:"DepositorName"`
 	DepositorPAN  string            `json:"DepositorPAN"`
 	DocType       string            `json:"DocType"` // "fdrecord"
@@ -394,6 +395,13 @@ func (s *SmartContract) SetMeta(ctx contractapi.TransactionContextInterface, id,
 		return err
 	}
 	return ctx.GetStub().PutState(recordKey(id), out)
+}
+
+// WhoAmI returns the caller identity's MSP client ID -- useful for discovering
+// the correct depositorID string to pass into MintFD before a real enrolment
+// workflow exists.
+func (s *SmartContract) WhoAmI(ctx contractapi.TransactionContextInterface) (string, error) {
+	return clientID(ctx)
 }
 
 // ===========================================================================
